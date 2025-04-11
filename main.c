@@ -22,7 +22,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
@@ -80,11 +79,68 @@ static void MX_TIM7_Init(void);
 static void MX_TIM8_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static uint8_t sw1_flag; 
+static uint8_t sw2_flag; 
+static uint8_t sw3_flag; 
+static uint8_t sw4_flag; 
+static uint8_t sw5_flag; 
+
+static uint8_t adc_flag; //근데 이거 볼륨아니었나?
+static uint8_t timer_flag; 
+static uint8_t realTime_flag= 0;
+static uint8_t switchMode =1; 
+uint32_t last_tick = 0; 
+uint32_t adc_value =0;
+
+
+uint8_t digits[4];
+uint16_t number = 0; 
+
+#define PCF8523_ADDR  (0x68 << 1 )           // Control 레지스터 1
+#define REG_CONTROL_1 0x00
+#define REG_SECONDS 0x03          // Seconds 레지스터 주소
+#define REG_MINUTES 0x04          // Minutes 레지스터 주소
+#define REG_HOURS   0x05          // Hours 레지스터 주소
+
+#define SPI_DUMMY_BYTE                      0x00
+
+
+
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+
+uint8_t mode_flag = 0;           // 0: SWITCH_MODE, 1: SERIAL_MODE
+uint8_t sw4_prev_state = 1;
+
+char received_cmd;
+uint8_t serial_flag = 0;
+
+const uint16_t SEGMENT_MAP[10] = {
+  0x3F,  
+  0x06, 
+  0x5B, 
+  0x4F,
+  0x66, 
+  0x6D,  
+  0x7D,  
+  0x07,  
+  0x7F,  
+  0x6F   
+};
+
+
+
+/*
+*SW4: 
+*SW3:
+*SW2:
+*SW1:
+*SW5: MODE 설정 
+*/
 
 //uint32_t timer_cnt = 0; 같이 내가 모르는 새에 변경될 수 있는 것들은 static 안하는게 좋다  
 //static은 우리집 반경 뭐 어딜가든 상관없는데 암튼 우리집에 두는거임 우리집현관문에 두는건 안됨 그거는 밖이니까 
@@ -107,19 +163,56 @@ typedef struct :  사실상 cpu 와 가까이 배치하기 위해서 padding
 
 
 
-*/
-//ide에서 수정중 머야 c자체가 바뀌는구나
+//*/
+////ide에서 수정중 머야 c자체가 바뀌는구나
 
-typedef struct 
-{
-	uint8_t a ; //: 1bit 시작주소 0x20007fe4 이렇게
-	//uint8_t padding[3]; 정렬 기준이 4bit 라서 a가 이걸 차지함 <- memory 상 
-	uint32_t b;	//얘로 정렬이 됨: 4bit 
-	
-	}	__attribute__((__packed__)) test_t; //__attribute__((__packed__))패딩제거 1 + 4 = 5 bit : 이어서 바로 붙이기
+//void handle_switch_mode(void) {
+//    if (HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin) == GPIO_PIN_RESET) {
+//        do_switch_action1();
+//    }
+//    if (HAL_GPIO_ReadPin(SW2_GPIO_Port, SW2_Pin) == GPIO_PIN_RESET) {
+//        do_switch_action2();
+//    }
+//    // 필요하면 SW3~SW5 추가!
+//}
 
-	
-	
+//void handle_serial_mode(void) {
+//    if (serial_flag == 1) {
+//        serial_flag = 0;
+//        switch (received_cmd) {
+//            case 'A': do_serial_action1(); break;
+//            case 'B': do_serial_action2(); break;
+//            // ...
+//        }
+//    }
+////}
+
+//void check_mode_button(void) {
+//    uint8_t sw4_now = HAL_GPIO_ReadPin(SW4_GPIO_Port, SW4_Pin);
+//    if (sw4_prev_state == 1 && sw4_now == 0) {
+//        mode_flag ^= 1;
+//    }
+//    sw4_prev_state = sw4_now;
+//}
+//void process_inputs(void) {
+//    if (mode_flag == 0) {
+//        handle_switch_mode();
+//    } else {
+//        handle_serial_mode();
+//    }
+//}
+
+
+//typedef struct 
+//{
+//	uint8_t a ; //: 1bit 시작주소 0x20007fe4 이렇게
+//	//uint8_t padding[3]; 정렬 기준이 4bit 라서 a가 이걸 차지함 <- memory 상 
+//	uint32_t b;	//얘로 정렬이 됨: 4bit 
+//	
+//	}	__attribute__((__packed__)) test_t; //__attribute__((__packed__))패딩제거 1 + 4 = 5 bit : 이어서 바로 붙이기
+
+//	
+//	
 
 
 /* Private SPI code ---------------------------------------------------------*/
@@ -165,6 +258,17 @@ main() 함수에서 초기화 작업을 수행한 후 SPI_TransmitReceive()함�
 //HAL_SPI_TransmitReceive();
 
 
+void BUZZER(void) //PA11
+{
+
+					HAL_TIM_OC_Start(&htim8,  TIM_CHANNEL_4);
+					
+					HAL_Delay(100);
+
+					HAL_TIM_OC_Stop(&htim8, TIM_CHANNEL_4);
+}
+
+
 static uint8_t Button = 0 ; 
 void buttonGetPressed(uint8_t Button) 
 {
@@ -197,6 +301,441 @@ void apMain(void)
 }
 
 
+/* 만약에 포트도 따로 조금 있었다면 
+void enable_digit(uint8_t digit) 
+{
+    GPIOD->ODR &= ~(0x0F); // 모든 디지트 끄기
+    GPIOD->ODR |= (1 << digit); // 해당 디지트만 켜기
+}
+
+*/
+
+//세그먼트 출력함수 
+void display_7SEG(uint8_t num) 
+{
+	
+	uint16_t pattern = SEGMENT_MAP[num]; 
+	
+	GPIOA->ODR &= ~(0x7F);  	
+  GPIOA->ODR |= (pattern & 0x7F); 
+	
+}
+
+void test_segment_direct(void)
+{
+    // 숫자 8 전체 점등 테스트용
+    GPIOA->ODR &= ~(0x7F);               // 먼저 꺼주고
+    GPIOA->ODR |= SEGMENT_MAP[8] & 0x7F; // 숫자 8 표시
+}
+
+
+
+
+
+//HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxData, uint8_t *pRxData, uint16_t Size, uint32_t Timeout);
+void RTC_Init(void) 
+{
+    HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
+
+    uint8_t init[3] = {0x00, 0x35, 0x14};
+    HAL_StatusTypeDef status;
+
+// 시간 초기화: 근데 여기 왜 1435 안돼? 
+    status = HAL_I2C_Mem_Write(&hi2c1, PCF8523_ADDR, REG_SECONDS, I2C_MEMADD_SIZE_8BIT, init, 3, HAL_MAX_DELAY);
+    if (status != HAL_OK) {
+        number = 7777; // I2C 쓰기 실패 디버깅
+        return;
+    }
+
+    // Control_1 레지스터 읽기
+    uint8_t ctrl1;
+    status = HAL_I2C_Mem_Read(&hi2c1, PCF8523_ADDR, REG_CONTROL_1, I2C_MEMADD_SIZE_8BIT, &ctrl1, 1, 100);
+    if (status != HAL_OK) {
+        number = 8888; // I2C 읽기 실패 디버깅
+        return;
+    }
+
+    // STOP 비트 확인 후 해제
+    if (ctrl1 & (1 << 5)) {
+        ctrl1 &= ~(1 << 5);  // STOP 비트 해제
+        status = HAL_I2C_Mem_Write(&hi2c1, PCF8523_ADDR, REG_CONTROL_1, I2C_MEMADD_SIZE_8BIT, &ctrl1, 1, 100);
+        if (status != HAL_OK) {
+            number = 9999; // STOP 비트 해제 실패 디버깅
+            return;
+        }
+    }
+}
+
+
+//================================================//
+uint32_t REALTIME(void)	
+{	
+	// os 이상data[0] &= 0x7F; 
+		uint32_t lastSendTick = 0;
+		HAL_StatusTypeDef status;
+    uint8_t data[3];  
+	
+		while(realTime_flag == 1 ) {
+
+    status = HAL_I2C_Mem_Read(&hi2c1, PCF8523_ADDR, REG_SECONDS, I2C_MEMADD_SIZE_8BIT, data, 3, 100);
+	
+    if (status != HAL_OK) {
+        number = 6666;
+        return 0xFFFF; 
+    }
+		
+		data[0] &= 0x7F; // bit 7을 0으로 만들고 나머지는 1 : 127 값 대입 근데 크리스탈 바꿔도 안되네 
+		
+		
+    uint8_t minutes = ((data[1] >> 4) * 10) + (data[1] & 0x0F);
+	
+	
+		uint8_t seconds = ((data[0] >> 4) * 10) + (data[0] & 0x0F);
+
+		
+		
+		number =( minutes * 100 )+ seconds;
+
+		
+		
+		if(HAL_GPIO_ReadPin(SW1_GPIO_Port,SW1_Pin) == GPIO_PIN_RESET) 
+		{
+			if(sw1_flag ==1)
+			{
+				
+				
+				sw1_flag = 0; 
+				number = 0000; 
+				HAL_Delay(50);
+				break;
+			}
+		}
+		
+		else
+				sw1_flag =1; 
+		
+		
+		
+		if(HAL_GetTick() - lastSendTick >=1000)
+		{
+			lastSendTick = HAL_GetTick(); 
+			char buffer[32]; 
+			sprintf(buffer, "\n\rCURRENT TIME>> %02dM %02dS", minutes, seconds);
+			HAL_UART_Transmit(&huart1, (uint8_t *)buffer, strlen(buffer), HAL_MAX_DELAY);
+	
+			
+			
+		}
+
+		
+	HAL_Delay(500);
+		
+		
+	}	//while
+		
+	
+		
+
+			
+
+}
+
+//flash memory test: Device ID(90h) TransmitReceive(); 
+void readManufacturer()
+{
+	//Manufacturer: 0xEF, Device: 0x15   
+
+		uint8_t tx_buf[6] = {0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t rx_buf[6] = {0};                      // Manufacturer, Device ID
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); 
+		HAL_SPI_TransmitReceive(&hspi2, tx_buf, rx_buf, 6, HAL_MAX_DELAY);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);   
+
+    char msg[64];
+    snprintf(msg, sizeof(msg), "0x90 ID - Manufacturer: 0x%02X, Device: 0x%02X\r\n", rx_buf[4], rx_buf[5]);
+    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+	
+
+}
+//여기 근데 중복이 많아가지고 나중에 받는 데이터 크기 다른것들 len들을 활용해 합치는걸로 리팩토링 
+void readUnique()
+{
+		uint8_t tx_buf[6] = {0x4B, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t rx_buf[6] = {0};                      // Read Unique
+		
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); 
+		HAL_SPI_TransmitReceive(&hspi2, tx_buf, rx_buf, 6, HAL_MAX_DELAY);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);   
+		
+		char msg[64];
+    snprintf(msg, sizeof(msg), "0x4B ID - Read Unique: 0x%02X\r\n", rx_buf[5]);
+    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+	
+}
+
+void timer()
+{
+	timer_flag =1; 
+	while( timer_flag == 1) 
+	{
+		uint32_t current_tick = HAL_GetTick(); 
+		if(current_tick - last_tick >=100) 
+		{
+			last_tick = current_tick; 
+			number++;
+			
+			if(number >9999)
+				
+				number = 0; 
+			
+			
+			
+		}
+		
+		if(HAL_GPIO_ReadPin(SW2_GPIO_Port,SW2_Pin) == GPIO_PIN_RESET) 
+		{
+			if(sw2_flag ==1)
+			{
+				
+				
+				sw2_flag = 0; 
+				number = 0000; 
+				HAL_Delay(50);
+				break;
+			}
+		}
+		
+		else
+				sw2_flag =1; 
+		
+		
+	}
+	
+	
+	
+	
+} 
+
+
+
+void adcValue(void)
+{
+	while(adc_flag ==1) {
+		
+	for (uint8_t i = 0 ; i<10; i++)
+		{
+			HAL_ADC_Start(&hadc1);			
+			adc_value += HAL_ADC_GetValue(&hadc1);
+			HAL_Delay(30);
+		}
+		adc_value /= 10;	
+		number = adc_value/41;
+		if(number>100)
+		{
+			number = 100;
+		}
+
+if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET) 
+		{	
+			if(sw4_flag ==1)
+			{
+				
+				
+				sw4_flag = 0; 
+				number = 0000; 
+				HAL_Delay(50);
+				break;
+			}
+		}
+		
+		else
+				sw4_flag =1; 
+	}
+			
+	}
+	
+	
+	
+	
+	
+
+
+
+//근데 이거 기존과 다르게 한번에 제어하는거라 로직이 바뀌네 숫자 처리하는거자체를 외부함수에 일단 넣음 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{	//SEGMENT_MAP[]이 있음 
+	
+
+	
+		static uint8_t digit = 0; 
+	
+		digits[0] = (number / 1000) % 10;
+		digits[1] = (number / 100) % 10;
+		digits[2] = (number / 10) % 10;
+		digits[3] = number % 10;
+	
+	if(htim-> Instance == TIM6) 
+	{
+		
+		HAL_GPIO_WritePin(QWE1_GPIO_Port,QWE1_Pin,GPIO_PIN_RESET); 
+		HAL_GPIO_WritePin(QWE2_GPIO_Port,QWE2_Pin,GPIO_PIN_RESET); 
+		HAL_GPIO_WritePin(QWE3_GPIO_Port,QWE3_Pin,GPIO_PIN_RESET); 
+		HAL_GPIO_WritePin(QWE4_GPIO_Port,QWE4_Pin,GPIO_PIN_RESET); 
+		
+		
+		if (!(HAL_GPIO_ReadPin(SW4_GPIO_Port, SW4_Pin) == GPIO_PIN_RESET && digit == 0)) 
+			{
+            display_7SEG(digits[digit]); 
+				
+			}
+
+		
+		 switch (digit) {
+			 
+			 
+			 
+			 if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET)
+		{
+			
+			
+		HAL_GPIO_WritePin(QWE1_GPIO_Port,QWE1_Pin,GPIO_PIN_RESET); 
+
+		}
+            case 0: HAL_GPIO_WritePin(QWE1_GPIO_Port, QWE1_Pin, GPIO_PIN_SET); break;
+            case 1: HAL_GPIO_WritePin(QWE2_GPIO_Port, QWE2_Pin, GPIO_PIN_SET); break;
+            case 2: HAL_GPIO_WritePin(QWE3_GPIO_Port, QWE3_Pin, GPIO_PIN_SET); break;
+            case 3: HAL_GPIO_WritePin(QWE4_GPIO_Port, QWE4_Pin, GPIO_PIN_SET); break;
+        }
+		
+		digit = (digit + 1) %4 ; 
+		
+		
+	} 
+	
+	
+}
+//스위치를 체크하고  플래깅 
+
+void sw_routine() 
+{
+	if(HAL_GPIO_ReadPin(SW5_GPIO_Port,SW5_Pin) == GPIO_PIN_RESET) 
+	{
+		HAL_Delay(30);
+		if(sw5_flag ==1)
+		{
+			sw5_flag = 0; 
+			
+			number =1122; 
+
+			
+			switchMode = !switchMode; // 토글 어근데 흠 진입로가 여러개일 뿐 같은 함수로 들어가야하잖아 
+			if(switchMode)
+			{
+							HAL_UART_Transmit(&huart1, (uint8_t *)"\r\nTX MODE\r\n",9,HAL_MAX_DELAY); 
+
+			}
+			else
+							HAL_UART_Transmit(&huart1, (uint8_t *)"\r\nRX MODE\r\n",9,HAL_MAX_DELAY); 
+			
+			}
+			}
+			else 
+			{
+				
+					sw5_flag =1; 
+				
+			}
+		
+		if(HAL_GPIO_ReadPin(SW1_GPIO_Port,SW1_Pin) == GPIO_PIN_RESET) 
+	{
+		if(sw1_flag ==1)
+		{
+			sw1_flag = 0; 
+			
+			HAL_UART_Transmit(&huart1, (uint8_t *)1,1,HAL_MAX_DELAY); 
+			realTime_flag = 1; 
+			REALTIME();
+			
+			
+		}
+	}
+		else 
+		{
+			
+				sw1_flag =1; 
+			
+		}
+		//여기에 spi 넣으려고 해: timer로 변경하려고 해 
+		if(HAL_GPIO_ReadPin(SW2_GPIO_Port,SW2_Pin) == GPIO_PIN_RESET) 
+	{
+		if(sw2_flag ==1)
+		{
+			sw2_flag = 0; 
+			
+			HAL_UART_Transmit(&huart1, (uint8_t *)1,1,HAL_MAX_DELAY); 
+			timer_flag = 1; 
+			timer();
+			
+			
+		}
+	}
+		else 
+		{
+			
+				sw2_flag =1; 
+			
+		}if(HAL_GPIO_ReadPin(SW3_GPIO_Port,SW3_Pin) == GPIO_PIN_RESET) 
+	{
+		if(sw3_flag ==1)
+		{
+			sw3_flag = 0; 
+			
+			HAL_UART_Transmit(&huart1, (uint8_t *)1,1,HAL_MAX_DELAY); 
+			readManufacturer();
+			
+			
+			
+		}
+	}
+		else 
+		{
+			
+				sw3_flag =1; 
+			
+		}if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET) 
+	{
+		if(sw4_flag ==1)
+		{
+			sw4_flag = 0; 
+			HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin); 
+			adc_flag =1; 
+			adcValue(); 
+
+			HAL_UART_Transmit(&huart1, (uint8_t *)1,1,HAL_MAX_DELAY); 
+//			readUnique();
+			
+			
+			
+			
+			
+			
+		}
+	}
+		else 
+		{
+			
+				sw4_flag =1; 
+			
+		}
+		
+		HAL_Delay(50);
+		
+		
+	}
+	
+
+
 /* USER CODE END 0 */
 
 /**
@@ -205,13 +744,10 @@ void apMain(void)
   */
 	
 	
-	
-	
-	
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -220,6 +756,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+	//RTC_Init(); 
 
   /* USER CODE END Init */
 
@@ -250,28 +787,37 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
+  
+	
+	HAL_TIM_Base_Start_IT(&htim6);
+	
+
+
+
+	while (1)
   {
+		
+		sw_routine(); 
+
+		
+	}
+
+
+		
+		
+		
+		
+	
+
     /* USER CODE END WHILE */
-		
-		test_t test;
-		uint32_t data_out;
-		
-		data_out = (uint32_t)&test.a; //e4
-		data_out = (uint32_t)&test.b; //e8 --> 시작주소가 4 차이나지 않아? : 사용은 물론 1byte를 사용하지만 할당 자체가 4byte
-		
-		data_out = sizeof(test_t); 		//이거 하면 8이 나옴
-		//이 개념을 왜 잘알아야하냐면 통신이 다를 수가 있는데: 통신 버퍼를 그대로 보낼경우 큰일: 상호 협의 필요 : 받는 쪽에섣 설정 혹은 옵션추가 후 제거
-		//uartWtrite(	(uint8_t *) &test, sizeof(test)	);
-		
-		received_data = SPI_TransmitReceive(send_data);
-		HAL_Delay(100);
 
     /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
-}	//main()
+		
+		
 
+  
+  /* USER CODE END 3 */
+}
 
 /**
   * @brief System Clock Configuration
