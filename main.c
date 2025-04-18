@@ -279,11 +279,8 @@ uint32_t REALTIME(void)
 		data[0] &= 0x7F; // bit 7을 0으로 만들고 나머지는 1 : 127 값 대입 근데 크리스탈 바꿔도 안되네 
 		
     uint8_t hours = ((data[2] >> 4) * 10) + (data[2] & 0x0F);
-		
     uint8_t minutes = ((data[1] >> 4) * 10) + (data[1] & 0x0F);
-	
 		uint8_t seconds = ((data[0] >> 4) * 10) + (data[0] & 0x0F);
-
 		number =( minutes * 100 )+ seconds;
 
 		
@@ -292,8 +289,6 @@ uint32_t REALTIME(void)
 		{
 			if(sw1_flag ==1)
 			{
-				
-				
 				sw1_flag = 0; 
 				number = 0; 
 				HAL_Delay(50);
@@ -312,6 +307,12 @@ uint32_t REALTIME(void)
 			HAL_UART_Transmit(&huart1, (uint8_t *)buffer, strlen(buffer), HAL_MAX_DELAY);
 	
 		}
+		
+		sprintf(seg,"TIM:%d\n", number);
+		HAL_UART_Transmit(&huart1,(uint8_t*)seg,strlen(seg), HAL_MAX_DELAY); 
+		
+		
+		
 
 	HAL_Delay(100);
 	
@@ -374,7 +375,6 @@ void sw1()
 		{
 			sw1_flag = 0; 
 			
-			HAL_UART_Transmit(&huart1, (uint8_t *)"1",1,HAL_MAX_DELAY); 
 			realTime_flag = 1; 
 			REALTIME();
 			
@@ -432,8 +432,14 @@ void sw3()
 	
 	
 }
+	
+
 void sw4()
 	{
+		
+		/*어라 근데 하드웨어에서만 제어되게끔 작성이 되었네? 
+		*	1. 병렬 구조 추가 	2. 직접 호출 
+		*/
 	if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET) 
 	{
 		if(sw4_flag ==1)
@@ -449,15 +455,14 @@ void sw4()
 			adcValue(); 
 			if(HAL_GPIO_ReadPin(LED4_GPIO_Port,LED4_Pin) ==GPIO_PIN_SET) 
 			{
-				sprintf(seg,"LED:%d,ON\n", 4);
+				sprintf(seg,"LED:%d,ON\n", 1);
 				HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
 			}
 			else if(HAL_GPIO_ReadPin(LED4_GPIO_Port,LED4_Pin) ==GPIO_PIN_RESET) 
 			{
-				sprintf(seg,"LED:%d,OFF\n", 4);
+				sprintf(seg,"LED:%d,OFF\n", 1);
 				HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
 			}
-			//여기근데 못쪼개는데 ,, 
 			
 		}
 	}
@@ -478,6 +483,7 @@ void sw5()
 			sw5_flag = 0; 
 			
 			number =1122; 
+			HAL_UART_Transmit_IT(&huart1, (uint8_t*)number,sizeof(number)); 
 
 			HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin);
 			sprintf(seg,"LED:%d\n", 3);
@@ -508,6 +514,83 @@ void sw5()
 				
 			}
 		
+}
+	void sw4_logic() 
+{
+//	adc_from_uart();
+				HAL_GPIO_TogglePin(LED4_GPIO_Port,LED4_Pin); 
+}
+void sw3_logic() 
+{
+	HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin); 
+		
+	
+}
+void sw2_logic() 
+{
+	HAL_GPIO_TogglePin(LED2_GPIO_Port,LED2_Pin); 
+	
+	
+}
+void sw1_logic() 
+{
+	HAL_GPIO_TogglePin(LED1_GPIO_Port,LED1_Pin); 
+}
+	
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	
+	if (huart->Instance == USART1)
+    {
+			
+			
+			
+			///함수만 다시 보면 됨
+			        if (rx_buffer[0] == 'B' && rx_buffer[1] == 'T' && rx_buffer[2] == 'N')
+							{
+
+                    char btn_num_char = rx_buffer[3];  
+                    int btn_num = btn_num_char - '0';  
+
+                    switch (btn_num)
+                    {
+                        case 1:
+														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
+
+                            sw1_logic();
+                            break;
+
+                        case 2:
+														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
+
+                            sw2_logic();
+                            break;
+
+                        case 3:
+														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
+
+                            sw3_logic();
+                            break;
+
+                        case 4:
+														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
+
+                            sw4_logic();
+                            break;
+
+                        default:
+                            break;
+                    }
+										
+                }
+            
+        		        HAL_UART_Receive_IT(&huart1, rx_buffer, 4);
+
+
+    }
+
+	
+	
 }
 
 
@@ -565,6 +648,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	number = test(); 
 	HAL_TIM_Base_Start_IT(&htim6);
+  HAL_UART_Receive_IT(&huart1, rx_buffer, 4);
 	BootMessage();
 	
 
