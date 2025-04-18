@@ -23,6 +23,12 @@ adc의 값으로 밝기를 조절하는 케이스
 #define ON 0
 //근데 얘들은 왜 h파일에서 안되는거야? 
 //아 알았다 값을 변화 시켜야겠어 
+
+
+
+
+
+
 void alertLED(uint16_t number) 
 {
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -107,26 +113,54 @@ uint16_t adcValue()
 		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
 		
 		
-		
-		
-
-		
-if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET) 
-		{	
-			if(sw4_flag ==1)
-			{
-				sw4_flag = 0; 
-				number = 0000; 
-				HAL_Delay(50);
-				break;
+	if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET) 
+			{	
+				if(sw4_flag ==1)
+				{
+					sw4_flag = 0; 
+					number = 0000; 
+					HAL_Delay(50);
+					break;
+				}
 			}
+			
+			else
+					sw4_flag =1; 
 		}
-		
-		else
-				sw4_flag =1; 
+		return number; 	
 	}
-	return number; 	
-	}
+
+	
+	
+	uint16_t adc_from_uart(void)
+{
+	
+	///다시 봐야댐 
+    uint32_t adc_accum = 0;
+    uint16_t result = 0;
+
+    for (uint8_t i = 0; i < 10; i++)
+    {
+        HAL_ADC_Start(&hadc1);
+        adc_accum += HAL_ADC_GetValue(&hadc1);
+        HAL_Delay(30);
+    }
+
+    result = adc_accum / 10;
+    uint16_t number = result / 40;
+    if (number > 100) number = 100;
+
+    alertLED(number);
+
+    sprintf(msg, "SEG:%d\n", number);
+    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+    sprintf(msg, "ADC:%d\n", number);
+    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+    return number;
+}
+
 
 
 
