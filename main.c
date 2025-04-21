@@ -98,8 +98,14 @@ uint8_t displayCompact = 0;
 
 
 uint8_t adc_flag; //근데 이거 볼륨아니었나?
-static uint8_t timer_flag; 
-static uint8_t realTime_flag= 0;
+uint8_t test_flag; 
+uint8_t timer_flag; 
+uint8_t realTime_flag= 0;
+uint8_t stop_flag= 0;
+
+uint8_t sendTimeFlag; 
+uint32_t sendStartTick; 
+
 /*
 typedef enum {
   MODE_SWITCH = 0,
@@ -192,6 +198,15 @@ void enable_digit(uint8_t digit)
 //4.6 리셋 (/RESET)(1) SOIC-16 및 TFBGA 패키지에서 전용 하드웨어 /RESET 핀이 제공
 //이 핀이 최소 약 1µS 동안 낮게 유지되면, 이 장치는 모든 외부 또는 내부 작업을 종료하고 전원 켜진 상태로 돌아감
 
+void stop_mode(void) 
+{
+	stop_flag = 1; 
+	
+}
+
+
+
+
 void BUZZER(void) 
 {
 					HAL_TIM_OC_Start(&htim8,  TIM_CHANNEL_4);
@@ -265,7 +280,7 @@ uint32_t REALTIME(void)
 	// os 이상data[0] &= 0x7F; -> 아니 이거 진짜 부품 갈았는데 왜 또 STOP BIT 선언 해야하는거지? 부품이 default동작을 안해 
 		uint32_t lastSendTick = 0;
 		HAL_StatusTypeDef status;
-    uint8_t data[3];  
+    static uint8_t data[3];  
 	
 		while(realTime_flag == 1 ) {
 
@@ -303,22 +318,60 @@ uint32_t REALTIME(void)
 		{
 			lastSendTick = HAL_GetTick(); 
 			char buffer[52]; 
+			sprintf(seg,"TIM:%d\n", number);
+			HAL_UART_Transmit(&huart1,(uint8_t*)seg,strlen(seg), HAL_MAX_DELAY); 
 			sprintf(buffer, "\n\r[Boot] System started at RTC Time: %02d:%02d:%02d", hours, minutes, seconds);
 			HAL_UART_Transmit(&huart1, (uint8_t *)buffer, strlen(buffer), HAL_MAX_DELAY);
+			
 	
 		}
-		
-		sprintf(seg,"TIM:%d\n", number);
-		HAL_UART_Transmit(&huart1,(uint8_t*)seg,strlen(seg), HAL_MAX_DELAY); 
-		
-		
-		
 
 	HAL_Delay(100);
 	
 	}	//while
 		
 }
+
+
+
+void start_realtime_mode(void)
+{
+    sendTimeFlag = 1;
+    sendStartTick = HAL_GetTick();  
+}
+
+void realTime_from_uart(void) 
+{
+    if (sendTimeFlag == 1) 
+    {
+        
+            HAL_StatusTypeDef status;
+            uint8_t data[3];
+
+            status = HAL_I2C_Mem_Read(&hi2c1, PCF8523_ADDR, REG_SECONDS, I2C_MEMADD_SIZE_8BIT, data, 3, 100);
+            data[0] &= 0x7F;
+
+            uint8_t hours = ((data[2] >> 4) * 10) + (data[2] & 0x0F);
+            uint8_t minutes = ((data[1] >> 4) * 10) + (data[1] & 0x0F);
+            uint8_t seconds = ((data[0] >> 4) * 10) + (data[0] & 0x0F);
+            number = (minutes * 100) + seconds;
+
+            sprintf(seg, "TIM:%d\n", number);
+            HAL_UART_Transmit(&huart1, (uint8_t*)seg, strlen(seg), HAL_MAX_DELAY);
+						HAL_Delay(500);
+			
+			
+						if(stop_flag ==1)
+						{
+							sendTimeFlag = 0;
+							return ;
+						}
+		}
+		
+        
+    
+}
+
 
 
 //여기 근데 중복이 많아가지고 나중에 받는 데이터 크기 다른것들 len들을 활용해 합치는걸로 리팩토링 
@@ -328,7 +381,7 @@ void timer()
 	while( timer_flag == 1) 
 	{
 		uint32_t current_tick = HAL_GetTick(); 
-		if(current_tick - last_tick >=100) 
+		if(current_tick - last_tick >=300) 
 		{
 			last_tick = current_tick; 
 			number++;
@@ -337,9 +390,12 @@ void timer()
 				
 				number = 0; 
 			
-			
+			sprintf(msg,"SEG:%d\n", number);
+		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY); 
 			
 		}
+		
+		
 		
 		if(HAL_GPIO_ReadPin(SW2_GPIO_Port,SW2_Pin) == GPIO_PIN_RESET) 
 		{
@@ -361,6 +417,10 @@ void timer()
 	}
 	
 } 
+void timer_from_uart() {
+	
+	
+}
 
 
 //스위치를 체크하고  플래깅 
@@ -451,7 +511,9 @@ void sw4()
 			HAL_Delay(30);
 			
 			adc_flag =1; 
+			test_flag =1;
 			adc_mode = !adc_mode;
+//			adc_from_uart();
 			adcValue(); 
 			if(HAL_GPIO_ReadPin(LED4_GPIO_Port,LED4_Pin) ==GPIO_PIN_SET) 
 			{
@@ -483,26 +545,23 @@ void sw5()
 			sw5_flag = 0; 
 			
 			number =1122; 
-			HAL_UART_Transmit_IT(&huart1, (uint8_t*)number,sizeof(number)); 
-
 			HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin);
-			sprintf(seg,"LED:%d\n", 3);
-			HAL_UART_Transmit(&huart1,(uint8_t*)seg,strlen(msg),1); 
+			sprintf(msg,"SEG:%d\n", number);
+			HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
+			
 			HAL_Delay(10);
 			
 			switchMode = !switchMode; // 토글 어근데 흠 진입로가 여러개일 뿐 같은 함수로 들어가야하잖아 
 			if(switchMode)
 			{
 				
-//							HAL_UART_Transmit(&huart1, (uint8_t *)"\r\nTX MODE\r\n",9,HAL_MAX_DELAY); 
 				UART_TransmitMessage("\r\nTX MODE\r\n", TYPE_STRING); 
 
 			}
 			else
 				
 				UART_TransmitMessage("\r\nRX MODE\r\n", TYPE_STRING); 
-//							HAL_UART_Transmit(&huart1, (uint8_t *)"\r\nRX MODE\r\n",9,HAL_MAX_DELAY); 
-							HAL_UART_Receive_IT(&huart1, rx_buffer, 6);
+				HAL_UART_Receive_IT(&huart1, rx_buffer, 6);
 			
 			
 			}
@@ -515,37 +574,60 @@ void sw5()
 			}
 		
 }
-	void sw4_logic() 
+void sw4_logic() 
 {
-//	adc_from_uart();
-				HAL_GPIO_TogglePin(LED4_GPIO_Port,LED4_Pin); 
+	
+	
+	adc_flag = 0; 
+	stop_flag = !stop_flag; 
+	start_adc_mode();
+	HAL_GPIO_TogglePin(LED4_GPIO_Port,LED4_Pin); 
+	
 }
 void sw3_logic() 
 {
+	number =3333; 
+	stop_flag = !stop_flag; 
 	HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin); 
-		
+	
 	
 }
 void sw2_logic() 
 {
+
+	timer();  
 	HAL_GPIO_TogglePin(LED2_GPIO_Port,LED2_Pin); 
 	
 	
 }
 void sw1_logic() 
 {
-	HAL_GPIO_TogglePin(LED1_GPIO_Port,LED1_Pin); 
+		sendTimeFlag = 0;
+		stop_flag = !stop_flag; 
+		start_realtime_mode();  // 이 함수가 10초짜리 전송 시작을 해줌!
+		HAL_GPIO_TogglePin(LED1_GPIO_Port,LED1_Pin); 
 }
+void sw5_logic() 
+{
+	
+	stop_flag = !stop_flag; 
+	number =5555; 
+			HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin);
+			sprintf(msg,"SEG:%d\n", number);
+			HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
+			
+			
+	
+}
+
+
 	
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	
 	if (huart->Instance == USART1)
     {
-			
-			
-			
-			///함수만 다시 보면 됨
+		
 			        if (rx_buffer[0] == 'B' && rx_buffer[1] == 'T' && rx_buffer[2] == 'N')
 							{
 
@@ -556,26 +638,28 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     {
                         case 1:
 														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
-
                             sw1_logic();
                             break;
 
                         case 2:
 														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
-
                             sw2_logic();
                             break;
 
                         case 3:
 														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
-
                             sw3_logic();
                             break;
 
                         case 4:
+														test_flag =1;
+														adc_flag =1; 
 														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
-
                             sw4_logic();
+                            break;
+												case 5:
+														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
+                            sw5_logic();
                             break;
 
                         default:
@@ -651,16 +735,21 @@ int main(void)
   HAL_UART_Receive_IT(&huart1, rx_buffer, 4);
 	BootMessage();
 	
-
-
 	while (1)
   {
 		HAL_Delay(30); 
+		
+		stop_flag=0; 
+
 		sw1();
 		sw2();
 		sw3();
 		sw4();
 		sw5();
+		realTime_from_uart();
+		adc_from_uart();
+		
+		
 	}
 
     /* USER CODE END WHILE */
