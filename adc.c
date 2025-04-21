@@ -18,6 +18,19 @@ adc의 값으로 밝기를 조절하는 케이스
 
 현재 끈끈한 함수로 만들어놨음 분리불가 
 
+
+number 값이 할당된 후에 
+
+*/
+/*
+*	같은 동작을 하기 위해서는 
+*	큐로 분리하거나 Task관리 
+*	
+*	아니면 딱 10초동안만 할 수 있게 해줄까? getTick() 10초 해서 해도 될거같은데 
+*
+*
+* 
+*
 */
 #define OFF 1000
 #define ON 0
@@ -25,9 +38,7 @@ adc의 값으로 밝기를 조절하는 케이스
 //아 알았다 값을 변화 시켜야겠어 
 
 
-
-
-
+///근데 alertLED(number)는 나중에 timer안에 넣어야 제대로 동작할 것 같다 
 
 void alertLED(uint16_t number) 
 {
@@ -132,33 +143,40 @@ uint16_t adcValue()
 
 	
 	
-	uint16_t adc_from_uart(void)
+void start_adc_mode(void)
 {
 	
-	///다시 봐야댐 
-    uint32_t adc_accum = 0;
-    uint16_t result = 0;
+	  adc_flag = 1;
+		sendStartTick = HAL_GetTick();  
+}
+		
+void adc_from_uart(void)
+{
+	
+	adc_value =0; 
+	
+	if(adc_flag ==1) 
+	{
+		
+	for (uint8_t i = 0; i < 10; i++)
+		{
+			
+				HAL_ADC_Start(&hadc1);
+				adc_value += HAL_ADC_GetValue(&hadc1);
+			
+		}
+				number = adc_value/400;
+				if (number >100) number = 100; 
+		
+		HAL_Delay(100);
 
-    for (uint8_t i = 0; i < 10; i++)
-    {
-        HAL_ADC_Start(&hadc1);
-        adc_accum += HAL_ADC_GetValue(&hadc1);
-        HAL_Delay(30);
-    }
-
-    result = adc_accum / 10;
-    uint16_t number = result / 40;
-    if (number > 100) number = 100;
-
-    alertLED(number);
-
-    sprintf(msg, "SEG:%d\n", number);
-    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-
-    sprintf(msg, "ADC:%d\n", number);
-    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-
-    return number;
+		if(stop_flag ==1)
+						{
+							adc_flag = 0;
+							return ; 
+						}		
+						
+		}
 }
 
 
