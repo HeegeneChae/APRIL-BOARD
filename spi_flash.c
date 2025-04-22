@@ -1,143 +1,122 @@
-#include "uart.h"
-extern  UART_HandleTypeDef huart1;
+/* 
+spi_flash.c는 SPI2를 "사용"만 하면 됨 
+spi2를 쓰기 위한 주체는 main.c/ spi.c에서 초기화해놓고, 
+*/
+//======================COMMUNICATION==========================//
 /*
-	현재 문제인지 아닌지, 
-	rx tx가 같이 들어있는데 일반적인 케이스가 아님 
-	
-	TX모드 일 때만 sw_routine()이 발생 
-	
-	TX모드: 
-	RX모드: GUI에서 명령이 들어오면 그걸 파싱해서 sw_routine()의 하나를 실행해 
-	
+// SPI Flash라면
+SPIFlash_Write();
+SPIFlash_Read();
+
+// RTC면
+RTC_SetTime();
+RTC_GetTime();
+
+HAL->IRQ Handler
+millis()/ TIM Interrupt
+HAL_Delay()는 Systick기반이라 블로킹
+
+int __io_putchar(int ch) {
+    HAL_UART_Transmit(&huart1, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
+
+-->printf("Hello\n"); 이렇게 디버깅 가능 
+
 */
 
-/*
-	int *p;	p는 int형 변수를 가리키는 포인터다
-	*p	포인터가 가리키는 값
-	void *	타입 없는 포인터. 뭐든 가리킬 수 있음 (캐스팅 필요)
-	(int *)data	data를 int 포인터로 변환
-*/
-const uint16_t SEGMENT_MAP[10] = 
-{
-  0x3F,  
-  0x06, 
-  0x5B, 
-  0x4F,
-  0x66, 
-  0x6D,  
-  0x7D,  
-  0x07,  
-  0x7F,  
-  0x6F   
-};
 
-void display_7SEG(uint8_t num) 
+/*	SPI_TransmitReceive
+select함수들을 사용해 슬레이브 디바이스를 선택한다 
+hal_SPI_TransmitReceive()를 사용하여 데이터를 송수신을 해 
+이 함수는 송신할 데이터와 수신할 버퍼를 인수로 받으며, 설정된 SPI를 통해 통신을 수행 
+main() 함수에서 초기화 작업을 수행한 후 SPI_TransmitReceive()함수를 이용해 데이터를 송신하고 응답 
+
+추후에: winbond 제조 ID같은거 확인키 알려주는 정도면 된다 
+*/
+
+
+#include "spi_flash.h"
+
+// 외부에서 선언한 SPI 핸들러를 사용한다고 알림
+extern SPI_HandleTypeDef hspi2;
+extern UART_HandleTypeDef huart1; 
+
+// 칩 선택 (CS 핀 LOW)
+void CS_Select(void) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET);
+}
+
+// 칩 해제 (CS 핀 HIGH)
+void CS_Deselect(void) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
+}
+
+// SPI 송수신 함수
+void SPI_TransmitReceive(uint8_t *tx_buf, uint8_t *rx_buf, uint16_t len) {
+    CS_Select();
+    HAL_SPI_TransmitReceive(&hspi2, tx_buf, rx_buf, len, HAL_MAX_DELAY);
+    CS_Deselect();
+}
+
+// 제조사 ID 읽기
+void readManufacturer(void) {
+    uint8_t tx_buf[6] = {0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t rx_buf[6] = {0};
+		
+    SPI_TransmitReceive(tx_buf, rx_buf, 6);
+
+    snprintf(msg, sizeof(msg)-1, "\r\n0x90 ID - Manufacturer: 0x%02X, Device: 0x%02X",
+             rx_buf[4], rx_buf[5]);
+
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+		
+}
+
+
+void start_read(void)
 {
-	uint16_t pattern = SEGMENT_MAP[num]; 
+		readID_flag = 1;
+    uint32_t sendStartTick = HAL_GetTick();  
 	
-	GPIOA->ODR &= ~(0x7F);  	
-  GPIOA->ODR |= (pattern & 0x7F); 
 	
 }
 
-// UART 메시지 전송 함수: 숫자와 문자 모두 보낼 수 있는 범용 함수로 변경하자 ! 
-/*
-	IT모드는 버퍼가 덮이면 안된다 
-	msg[]가 바뀌면 값이 엉뚱한 문자열이 나가 나중에 큐나 더블 버퍼 
-*/
-void UART_TransmitMessage(const void *data, uint8_t type)
-{
-	
-	if(type == TYPE_STRING)
+void readID_form_uart(void) 
 	{
-		const char *msg = (const char *)data; 
-		HAL_UART_Transmit_IT(&huart1, (uint8_t *)msg, strlen(msg)); 
+		
+		if(readID_flag ==1)
+		{
+			readID_flag =0;
+    uint8_t tx_buf[6] = {0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t rx_buf[6] = {0};
+		
+    SPI_TransmitReceive(tx_buf, rx_buf, 6);
+
+    snprintf(msg, sizeof(msg)-1, "\r\n0x90 ID - Manufacturer: 0x%02X, Device: 0x%02X",
+             rx_buf[4], rx_buf[5]);
+
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+		
+		
+		if(stop_flag ==1)
+		{
+			readID_flag =0;
+			return ;
+		}
+		
 	}
-	else if(type == TYPE_INT) 
-	{
-		int num = *((int *)data);
-		sprintf(msg, "%d", num); 
-		HAL_UART_Transmit_IT(&huart1, (uint8_t *)msg, strlen(msg)); 
-	}
-
+		
 }
 
 
-void BootMessage()
-{
-	HAL_UART_Transmit_IT(&huart1, (uint8_t *)"\r\n[System Started]",18); 
-	HAL_UART_Receive_IT(&huart1, rx_buffer,1); 
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-	{	//SEGMENT_MAP[]이 있음:0~9까지 매핑 
-	
-		static uint8_t digit = 0; 
-	
-		digits[0] = (number / 1000) % 10;
-		digits[1] = (number / 100) % 10;
-		digits[2] = (number / 10) % 10;
-		digits[3] = number % 10;
-	
-	if(htim-> Instance == TIM6) 
-	{
-//				blink_counter += 1;
-//        if (blink_counter >= 50) {  
-//            blink_flag = !blink_flag;
-//            blink_counter = 0;
-//        }
-		
-		HAL_GPIO_WritePin(QWE1_GPIO_Port,QWE1_Pin,GPIO_PIN_RESET); 
-		HAL_GPIO_WritePin(QWE2_GPIO_Port,QWE2_Pin,GPIO_PIN_RESET); 
-		HAL_GPIO_WritePin(QWE3_GPIO_Port,QWE3_Pin,GPIO_PIN_RESET); 
-		HAL_GPIO_WritePin(QWE4_GPIO_Port,QWE4_Pin,GPIO_PIN_RESET); 
-		
-		
-//		if (!(adc_mode && digit == 0))
-//        {
-					//여기 자동으로 첫번째 자리 꺼주는거는 내일 다시 해야겠다 
-					
-            // 세그먼트에 숫자 표시
-            display_7SEG(digits[digit]);
-
-            // 해당 자리 선택
-            switch (digit) {
-                case 0: HAL_GPIO_WritePin(QWE1_GPIO_Port, QWE1_Pin, GPIO_PIN_SET); break;
-                case 1: HAL_GPIO_WritePin(QWE2_GPIO_Port, QWE2_Pin, GPIO_PIN_SET); break;
-                case 2: HAL_GPIO_WritePin(QWE3_GPIO_Port, QWE3_Pin, GPIO_PIN_SET); break;
-                case 3: HAL_GPIO_WritePin(QWE4_GPIO_Port, QWE4_Pin, GPIO_PIN_SET); break;
-            }
-     //  }
-
-        // 다음 자리로 이동
-        digit = (digit + 1) % 4;
-
-				
-    }
-	
-}
-	
-
-	
-
-/*
-HAL_UART_Transmit(&huart1, (uint8_t *)"Hello", 6, HAL_MAX_DELAY);
-: "Hello"는 실제로는 "Hello\0"로 6bit
-	근데 strlen()은 null은 빼니까 주의해야하고 
-	헷갈리니까 그냥 직접세거나 sizeof(msg)-1으로 계산하면 편함
-
-아, interrupt로 변경 
-
--uart command parser
-	형식: $CMD01;
-       ↑  ↑
-      헤더  명령값
-문자열 3~5자리 num1234->
-
--rx/tx 이사 
-*/
 
 
-//uart를 먼저 분리하는게 제일 편한거 같음 
-//함수 하나만 더 해보고 c쪽 구조는 이제 구조 변경은 필요없는거같아 
-//boot메세지와 led토글 확인 완료 
+
+
+
+
+
+
+
+
