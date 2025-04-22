@@ -97,10 +97,19 @@ uint8_t displayCompact = 0;
 
 
 
-uint8_t adc_flag; //근데 이거 볼륨아니었나?
+uint8_t adc_flag; 
+uint8_t adc_flag1; 
 uint8_t test_flag; 
 uint8_t timer_flag; 
+uint8_t timer_flag1;
 uint8_t realTime_flag= 0;
+
+uint8_t readID_flag; 
+
+
+
+uint8_t mode_flag; 
+
 uint8_t stop_flag= 0;
 
 uint8_t sendTimeFlag; 
@@ -336,8 +345,9 @@ uint32_t REALTIME(void)
 
 void start_realtime_mode(void)
 {
-    sendTimeFlag = 1;
-    sendStartTick = HAL_GetTick();  
+	sendTimeFlag = 1;
+  sendStartTick = HAL_GetTick();  
+    
 }
 
 void realTime_from_uart(void) 
@@ -372,9 +382,19 @@ void realTime_from_uart(void)
     
 }
 
+/*
+                elif cmd_type == "SEG":
+                    self.segment_display.set_value(cmd_data)
+
+                elif cmd_type =="TIM":
+                    self.segment_display.set_value(cmd_data)
+*/
+
 
 
 //여기 근데 중복이 많아가지고 나중에 받는 데이터 크기 다른것들 len들을 활용해 합치는걸로 리팩토링 
+
+///오늘 이거 추가 
 void timer()
 {
 	timer_flag =1; 
@@ -417,7 +437,41 @@ void timer()
 	}
 	
 } 
-void timer_from_uart() {
+
+
+void start_timer_mode(void)
+{
+	timer_flag1 = 1;
+  sendStartTick = HAL_GetTick();  
+	
+}
+void timer_from_uart() 
+{
+	while( timer_flag1 == 1) 
+	{
+		uint32_t current_tick = HAL_GetTick(); 
+		if(current_tick - last_tick >=300) 
+		{
+			last_tick = current_tick; 
+			number++;
+			
+			if(number >9999)
+				
+				number = 0; 
+			
+			sprintf(msg,"SEG:%d\n", number);
+		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY); 
+			
+		}
+		
+		
+		
+		if(stop_flag ==1)
+						{
+							timer_flag1 = 0;
+							return ;
+						}
+	}
 	
 	
 }
@@ -429,8 +483,10 @@ void timer_from_uart() {
 //if( strncmp( str1, str2, 5 ) == 0 )
 void sw1()
 	{
+
 	if(HAL_GPIO_ReadPin(SW1_GPIO_Port,SW1_Pin) == GPIO_PIN_RESET) 
 	{
+		BUZZER();
 		if(sw1_flag ==1)
 		{
 			sw1_flag = 0; 
@@ -451,8 +507,10 @@ void sw1()
 }
 void sw2()
 	{
+		
 	if(HAL_GPIO_ReadPin(SW2_GPIO_Port,SW2_Pin) == GPIO_PIN_RESET) 
 	{
+		BUZZER();
 		if(sw2_flag ==1)
 		{
 			sw2_flag = 0; 
@@ -475,6 +533,7 @@ void sw3()
 	{
 	if(HAL_GPIO_ReadPin(SW3_GPIO_Port,SW3_Pin) == GPIO_PIN_RESET) 
 	{
+		BUZZER();
 		if(sw3_flag ==1)
 		{
 			sw3_flag = 0; 
@@ -496,35 +555,22 @@ void sw3()
 
 void sw4()
 	{
-		
-		/*어라 근데 하드웨어에서만 제어되게끔 작성이 되었네? 
-		*	1. 병렬 구조 추가 	2. 직접 호출 
-		*/
+	
 	if(HAL_GPIO_ReadPin(SW4_GPIO_Port,SW4_Pin) == GPIO_PIN_RESET) 
 	{
+		BUZZER();
 		if(sw4_flag ==1)
 		{
 
 			sw4_flag = 0; 
 			
-			HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin); 
 			HAL_Delay(30);
 			
 			adc_flag =1; 
 			test_flag =1;
 			adc_mode = !adc_mode;
-//			adc_from_uart();
 			adcValue(); 
-			if(HAL_GPIO_ReadPin(LED4_GPIO_Port,LED4_Pin) ==GPIO_PIN_SET) 
-			{
-				sprintf(seg,"LED:%d,ON\n", 1);
-				HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
-			}
-			else if(HAL_GPIO_ReadPin(LED4_GPIO_Port,LED4_Pin) ==GPIO_PIN_RESET) 
-			{
-				sprintf(seg,"LED:%d,OFF\n", 1);
-				HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
-			}
+			
 			
 		}
 	}
@@ -540,16 +586,28 @@ void sw5()
 	{
 	if(HAL_GPIO_ReadPin(SW5_GPIO_Port,SW5_Pin) == GPIO_PIN_RESET) 
 	{
+		BUZZER();
 		if(sw5_flag ==1)
 		{
 			sw5_flag = 0; 
 			
 			number =1122; 
 			HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin);
-			sprintf(msg,"SEG:%d\n", number);
-			HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
-			
+			if(HAL_GPIO_ReadPin(LED3_GPIO_Port,LED3_Pin) ==GPIO_PIN_SET) 
+			{
+			sprintf(seg,"LED:%d,OFF\n", 3);
+			HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
+			}
+			else if(HAL_GPIO_ReadPin(LED3_GPIO_Port,LED3_Pin) ==GPIO_PIN_RESET) 
+			{
+			sprintf(seg,"LED:%d,ON\n", 3);
+			HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
+			}
 			HAL_Delay(10);
+			sprintf(msg,"SEG:%d\n", number);
+			HAL_UART_Transmit_IT(&huart1,(uint8_t*)msg,strlen(msg)); 
+			
+			
 			
 			switchMode = !switchMode; // 토글 어근데 흠 진입로가 여러개일 뿐 같은 함수로 들어가야하잖아 
 			if(switchMode)
@@ -581,44 +639,89 @@ void sw4_logic()
 	adc_flag = 0; 
 	stop_flag = !stop_flag; 
 	start_adc_mode();
-	HAL_GPIO_TogglePin(LED4_GPIO_Port,LED4_Pin); 
 	
 }
 void sw3_logic() 
 {
-	number =3333; 
+	readID_flag =0; 
 	stop_flag = !stop_flag; 
-	HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin); 
-	
-	
+	start_read();
+
 }
 void sw2_logic() 
 {
-
-	timer();  
-	HAL_GPIO_TogglePin(LED2_GPIO_Port,LED2_Pin); 
+	sendTimeFlag = 0;
+	timer_flag = 0; 
 	
+	stop_flag = !stop_flag; 
+	start_timer_mode();
+
 	
 }
 void sw1_logic() 
 {
-		sendTimeFlag = 0;
-		stop_flag = !stop_flag; 
-		start_realtime_mode();  // 이 함수가 10초짜리 전송 시작을 해줌!
-		HAL_GPIO_TogglePin(LED1_GPIO_Port,LED1_Pin); 
+	sendTimeFlag = 0;
+	stop_flag = !stop_flag; 
+	start_realtime_mode(); 
 }
-void sw5_logic() 
+
+
+
+void start_mode() 
+{
+	mode_flag = 1;
+  sendStartTick = HAL_GetTick();  
+	
+}
+void mode()
 {
 	
-	stop_flag = !stop_flag; 
-	number =5555; 
-			HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin);
-			sprintf(msg,"SEG:%d\n", number);
-			HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
-			
-			
+	if(mode_flag ==1)
+	{
+		
+		number = 5555; 
+		HAL_GPIO_TogglePin(LED3_GPIO_Port,LED3_Pin);
+		
+		sprintf(msg,"SEG:%d\n", number);
+		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
+		
+		
+			if(HAL_GPIO_ReadPin(LED3_GPIO_Port,LED3_Pin) ==GPIO_PIN_SET) 
+			{
+			sprintf(seg,"LED:%d,OFF\n", 3);
+			HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
+			}
+			else if(HAL_GPIO_ReadPin(LED3_GPIO_Port,LED3_Pin) ==GPIO_PIN_RESET) 
+			{
+			sprintf(seg,"LED:%d,ON\n", 3);
+			HAL_UART_Transmit_IT(&huart1,(uint8_t*)seg,strlen(seg)); 
+			}
+			mode_flag=0; 
+HAL_Delay(100);
+			if(stop_flag ==1)
+						{
+							mode_flag = 0;
+							return ;
+						}
+						
+		
+	}
+	
 	
 }
+
+
+
+void sw5_logic() 
+{
+	mode_flag = 0;
+	
+	stop_flag = !stop_flag; 
+	start_mode(); 
+
+}
+
+//LED만 보내주면 끝 !
 
 
 	
@@ -637,29 +740,25 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     switch (btn_num)
                     {
                         case 1:
-														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
                             sw1_logic();
                             break;
 
                         case 2:
-														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
                             sw2_logic();
                             break;
 
                         case 3:
-														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
                             sw3_logic();
                             break;
 
                         case 4:
 														test_flag =1;
 														adc_flag =1; 
-														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
                             sw4_logic();
                             break;
 												case 5:
-														HAL_UART_Transmit_IT(&huart1,(uint8_t *)rx_buffer,4);	
                             sw5_logic();
+												
                             break;
 
                         default:
@@ -669,12 +768,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 }
             
         		        HAL_UART_Receive_IT(&huart1, rx_buffer, 4);
-
-
     }
 
-	
-	
 }
 
 
@@ -730,14 +825,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	number = test(); 
+	number = 8888;
 	HAL_TIM_Base_Start_IT(&htim6);
   HAL_UART_Receive_IT(&huart1, rx_buffer, 4);
 	BootMessage();
 	
 	while (1)
   {
-		HAL_Delay(30); 
+		HAL_Delay(100); 
 		
 		stop_flag=0; 
 
@@ -748,6 +843,10 @@ int main(void)
 		sw5();
 		realTime_from_uart();
 		adc_from_uart();
+		timer_from_uart();  
+		readID_form_uart();
+		mode();
+
 		
 		
 	}
