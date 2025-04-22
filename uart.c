@@ -117,21 +117,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	
 }
 	
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if(huart->Instance ==USART1)
-	{
-		if(rx_buffer[0] == 'R') // 'R'로 시작하는지 확인
-        {
-						HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);	//이 안에까지 들어옴 아근데 얘는 다시 꺼지는데 
-					
-						number = 1;  //뭔가 종료가 되기는 하는데 
-						
-        }
-	}
-	
-	
-}
+
 	
 
 /*
