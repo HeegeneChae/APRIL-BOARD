@@ -39,7 +39,7 @@ number 값이 할당된 후에
 
 
 ///근데 alertLED(number)는 나중에 timer안에 넣어야 제대로 동작할 것 같다 
-
+///alertLED를 한개 나중에 추가 
 void alertLED(uint16_t number) 
 {
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -97,7 +97,7 @@ void alertLED(uint16_t number)
         __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, ON); 
     }
 		
-		HAL_Delay(10);
+//		HAL_Delay(10);
 	
 	
 }
@@ -146,16 +146,16 @@ uint16_t adcValue()
 void start_adc_mode(void)
 {
 	
-	  adc_flag = 1;
+	  adc_flag1 = 1;
 		sendStartTick = HAL_GetTick();  
 }
-		
 void adc_from_uart(void)
 {
 	
 	adc_value =0; 
+	adc_flag =0; 
 	
-	if(adc_flag ==1) 
+	if(adc_flag1 ==1) 
 	{
 		
 	for (uint8_t i = 0; i < 10; i++)
@@ -168,11 +168,20 @@ void adc_from_uart(void)
 				number = adc_value/400;
 				if (number >100) number = 100; 
 		
+		sprintf(msg,"SEG:%d\n", number);
+		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
+		
+		sprintf(msg,"ADC:%d\n", number);
+		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),1); 
+		
+		
+		alertLED(number);
+		
 		HAL_Delay(100);
 
 		if(stop_flag ==1)
 						{
-							adc_flag = 0;
+							adc_flag1 = 0;
 							return ; 
 						}		
 						
