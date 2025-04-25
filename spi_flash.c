@@ -61,15 +61,27 @@ void SPI_TransmitReceive(uint8_t *tx_buf, uint8_t *rx_buf, uint16_t len) {
 
 // 제조사 ID 읽기
 void readManufacturer(void) {
+		
+	
+	
+		HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_RESET);
+		sprintf(msg,"LED:%d,ON\n", 3);
+		HAL_UART_Transmit_IT(&huart1,(uint8_t*)msg,strlen(msg)); 
+	
+		HAL_Delay(50);
     uint8_t tx_buf[6] = {0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t rx_buf[6] = {0};
 		
     SPI_TransmitReceive(tx_buf, rx_buf, 6);
 
-    snprintf(msg, sizeof(msg)-1, "\r\n0x90 ID - Manufacturer: 0x%02X, Device: 0x%02X",
+    snprintf(msg, sizeof(msg)-1, "\r\n0x90 ID - Manufacturer: 0x%02X, Device: 0x%02X\n",
              rx_buf[4], rx_buf[5]);
 
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+		
+		GPIOC->BSRR = LED2_Pin;
+		sprintf(msg,"LED:%d,OFF\n", 3);
+		HAL_UART_Transmit(&huart1,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY); 
 		
 }
 
